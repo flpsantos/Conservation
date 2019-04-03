@@ -1,0 +1,16 @@
+#!usr/bin/bash
+
+
+for i in `cat species`; do
+	#echo ${i}
+	ln -s /home/projects2/local_projects/intralncRNA/ensembl_organisms/${i}/final  ${i}.final
+	cut -f2 ${i}.final | awk  NR!=1 | sort | uniq > lncuniq
+	zcat /home/projects2/local_projects/intralncRNA/ensembl_organisms/${i}/*.gtf.gz | fgrep -f lncuniq - | awk -v OFS='\t' '{if($3=="gene")print$1,$4,$5,$10,".",$7}' | sed -e "s/\;//g" -e "s/\"//g" > ${i}.lnc.uniq.bed
+	zcat /home/projects2/local_projects/intralncRNA/ensembl_organisms/${i}/*.gtf.gz | grep "protein_coding" |  awk -v OFS='\t' '{if($3=="gene")print$1,$4,$5,$10,".",$7}' | sed -e "s/\;//g" -e "s/\"//g" > ${i}.proteincoding.uniq.bed
+	sort -k1,1 -k2,2n ${i}.lnc.uniq.bed > ${i}.lnc.uniq.sorted.bed
+	sort -k1,1 -k2,2n ${i}.proteincoding.uniq.bed > ${i}.proteincoding.uniq.sorted.bed
+	bedtools closest -a ${i}.lnc.uniq.sorted.bed -b ${i}.proteincoding.uniq.sorted.bed -k 4 -D a -iu > igup.${i}.out
+	bedtools closest -a ${i}.lnc.uniq.sorted.bed -b ${i}.proteincoding.uniq.sorted.bed -k 4 -D a -id >> igdown.${i}.out
+	done
+
+#colunas de saida: lnc[4] ptcoding[9]
