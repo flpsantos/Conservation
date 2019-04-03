@@ -1,0 +1,12 @@
+##lncRNA conservation analysis tool##
+
+Required input:
+
+-Previously annotated coding genes orthology
+-lncRNA annotation
+-Protein coding annotation
+
+-Parameters:
+
+Sinteny index (number of orthologous protein coding genes in the neighborhood to be considered)
+
