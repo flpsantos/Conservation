@@ -19,11 +19,22 @@
 import argparse
 import sys
 import numpy as np  #Optimize speed
-from multiprocessing import Process, Queue
+import multiprocessing
+
+
+
+#Parameter of lncRNA distance checkout
+
+######
+step=4
+######
+
 
 
 #Getting  file names
-filevars=["lncpairptAupstream", "lncpairptAdownstream", "lncpairptBupstream", "lncpairptBdownstream", "ptcpairptc"]  # variables that receive file names
+filevars=["lncpairptAupstream", "lncpairptAdownstream", \
+"lncpairptBupstream", "lncpairptBdownstream", \
+"ptcpairptc"]  # variables that receive file names
 
 parser = argparse.ArgumentParser(description='lncRNA conservation by proximity')
 
@@ -34,200 +45,159 @@ parser.add_argument('-bdown', action = 'store', dest = filevars[3], help='lncRNA
 parser.add_argument('-c', action = 'store', dest = filevars[4], help='ptcoding-ptcoding orthologous pairs by species')
 parser.add_argument('--version')
 
-
-print parser.parse_args()
 entrada=parser.parse_args()
 
 #################################Getting files###############################################
+
+print "Processing files..."
+
+#Getting protein/protein orthologs for two organisms
+
+corptc={}
+with open (entrada.ptcpairptc, 'r') as ptcpair:
+        for line in ptcpair:
+                if line[0]!="G":
+                        cols=line.split()
+                        corptc[cols[0]]=cols[2] # key:lncgene, ptcgene
 
 
 #One coding gene may have many closest lncRNAs associated to it. So dictionary key MUST be lncRNA
 #Getting closest upstream/downstream lnc/protein coding proximity pair for organism A and B
 
 corelist=[]
+aux={}
 for i in range(0, len(filevars)-1):
-	aux={}
 	with open (eval("entrada."+filevars[i]), 'r') as lncpair:
 	 	for line in lncpair:
-			cols=line.split()
-			if cols[3] not in aux:
-				aux[cols[3]]=[]
+			col=line.split()
+			protein=col[9]
+			lnc=col[3]
+			if i<=1:
+				if protein in corptc:
+					if lnc not in aux:
+						aux[lnc]=[[],[]]
+					else:
+						aux[lnc][i].append(protein) 		#dic={lncgene: ptcgeneup1, ptcgeneup2,...ptcgenedownN-1,ptcgenedowN]
 			else:
-				aux[cols[3]].append(cols[9]) 		#key:lncgene, ptcgene
-	corelist.append(aux) 						#[dicupA, dicdownA, dicupB, dicdownB]
+				if protein in corptc.values():
+                                        if lnc not in aux:
+                                                aux[lnc]=[[],[]]
+                                        else:
+                                                aux[lnc][i-2].append(protein)            #dic={lncgene: ptcgeneup1, ptcgeneup2,...ptcgenedownN-1,ptcgenedowN]
 
-#Getting protein/protein orthologs for two organisms
+	if i==1:
+		dic1=aux
+		aux={}
 
-corptc={}
-with open (entrada.ptcpairptc, 'r') as ptcpair:
-	for line in ptcpair:
-		if line[0]!="G":
-			cols=line.split()
-			corptc[cols[0]]=cols[2] # key:lncgene, ptcgene
-
-
-
-##################################Processing files##########################################
-
-print ("Processing files...")
+dic2=aux 								#[dicA, dicB] 
 
 
-mergeA={}
-for i in corelist[0]:
-	for j in corelist[1]:
-		if i==j:
-			mergeA[i]=[corelist[0][i],corelist[1][j]]		#{lncA:[[upproteins],[downproteins]]
+##################Optimizing orthology algorithm, test1#######################
+
+"""print "Processing orthology..."
 
 
-mergeB={}
-for i in corelist[2]:
-	for j in corelist[3]:
-		if i==j:
-			mergeB[i]=[corelist[2][i],corelist[3][j]]		#{lncB:[[upproteins],[downproteins]]
+def lookupup(q, dic1,dic2):
+	up=[]
+	for i in dic1:
+		for index1 in range(0,len(dic1[i][0])):
+			protein1=dic1[i][0][index1]
+			protein2=corptc[dic1[i][0][index1]]
+			for j in dic2:
+				if protein2 in dic2[j][0]:
+							up.append([i,j,abs(index1-dic2[j][0].index(protein2))])
+				elif protein2 in dic2[j][1]:
+							up.append([i,j,abs(index1-dic2[j][1].index(protein2))])
+#	return (up)
+	q.put(up)
+
+def lookupdown(w,dic1,dic2):
+	down=[]
+        for i in dic1:
+                for index1 in range(0,len(dic1[i][1])):
+			protein1=dic1[i][1][index1]
+                        protein2=corptc[dic1[i][1][index1]]
+                        for j in dic2:
+                                if protein2 in dic2[j][0]:
+                                                        down.append([i,j,abs(index1-dic2[j][0].index(protein2))])
+                                elif protein2 in dic2[j][1]:
+                                                        down.append([i,j,abs(index1-dic2[j][1].index(protein2))])
+#	return (down)
+	w.put(down)
+
+dic12=dic1
+dic22=dic2
+
+if __name__ == '__main__':
+        q=Queue()
+        p1=Process(target=lookupup,args=(q,dic1,dic2))
+        p1.start()
+        w=Queue()
+        p2=Process(target=lookupdown,args=(w,dic12,dic22))
+        p2.start()
+        p1.join()
+        p2.join()
 
 
-##########################Processing orthology protein as reference##################################
+res1=q.get()
+res2=w.get()
 
-"""print ("Processing orthology...")
-
-
-def procA(q,mergeA,corptc):
-	ptcA={}
-	for i in corptc:
-		for j in mergeA:
-			#upstream
-			if i in mergeA[j][0] and i not in ptcA:
-				ptcA[i]=()
-				ptcA[i]=ptcA[i]+(j, mergeA[j][0].index(i))  #{Protein:(lncRNAA,distance)
-			elif i in mergeA[j][0]:
-				ptcA[i]=ptcA[i]+(j, mergeA[j][0].index(i))
-			#downstream
-			if i in mergeA[j][1] and i not in ptcA:
-				ptcA[i]=()
-				ptcA[i]=ptcA[i]+(j, -(mergeA[j][1].index(i)))
-			elif i in mergeA[j][1]:
-                        	ptcA[i]=ptcA[i]+(j, -(mergeA[j][1].index(i)))
-
-	q.put(ptcA)
+print res1
+print res2
+"""
 
 
-def procB(w,mergeB,corptc):
-	ptcB={}
-	for i in corptc:
-		k=corptc[i]
-		for j in mergeB:
-                	#upstream
-                	if k in mergeB[j][0] and k not in ptcB:
-                        	ptcB[k]=()
-                        	ptcB[k]=ptcB[k]+(j, mergeB[j][0].index(k))  #{Protein:(lncRNAA,distance)
-                	elif i in mergeB[j][0]:
-                        	ptcB[k]=ptcB[k]+(j, mergeB[j][0].index(k))
-                	#downstream
-                	if i in mergeB[j][1] and k not in ptcA:
-                        	ptcB[k]=()
-                        	ptcB[k]=ptcB[k]+(j, -(mergeB[j][1].index(k)))
-                	elif i in mergeB[j][1]:
-                        	ptcB[k]=ptcB[k]+(j, -(mergeB[j][1].index(k)))
+##################Optimizing orthology algorithm, test2#######################
 
-	w.put(ptcB)
+print "Processing orthology..."
+
+
+def lookupup(dic1,dic2, out_dic):
+        up=[]
+        for i in dic1:
+                for index1 in range(0,len(dic1[i][0])):
+                        protein1=dic1[i][0][index1]
+                        protein2=corptc[dic1[i][0][index1]]
+                        for j in dic2:
+                                if protein2 in dic2[j][0]:
+                                                        up.extend([i,j,abs(index1-dic2[j][0].index(protein2))])
+                                elif protein2 in dic2[j][1]:
+                                                        up.extend([i,j,abs(index1-dic2[j][1].index(protein2))])
+	out_dic["luup"]=up
+
+
+def lookupdown(dic1,dic2, out_dic):
+        down=[]
+        for i in dic1:
+                for index1 in range(0,len(dic1[i][1])):
+                        protein1=dic1[i][1][index1]
+                        protein2=corptc[dic1[i][1][index1]]
+                        for j in dic2:
+                                if protein2 in dic2[j][0]:
+                                                        down.extend([i,j,abs(index1-dic2[j][0].index(protein2))])
+                                elif protein2 in dic2[j][1]:
+                                                        down.extend([i,j,abs(index1-dic2[j][1].index(protein2))])
+	out_dic["ludown"]=down
 
 
 if __name__ == '__main__':
-	q=Queue()
-	p1=Process(target=procA,args=(q,mergeA,corptc))
+	manager = multiprocessing.Manager()
+	out_dic = manager.dict()
+        p1=multiprocessing.Process(target=lookupup,args=(dic1,dic2, out_dic))
 	p1.start()
-	w=Queue()
-	p2=Process(target=procB,args=(w,mergeB,corptc))
-	p2.start()
-	p1.join()
-	p2.join()
+        p2=multiprocessing.Process(target=lookupdown,args=(dic1,dic2, out_dic))
+        p2.start()
+        p1.join()
+        p2.join()
 
-print w.get()
-"""
+##########################Returning results###################################
 
-#####################Processing orthology [lncRNA as reference]#################
+print "Building output"
 
-
-for i in corptc:
-	for j in mergeA:
-		if i in mergeA[j][0]:
-			for k in mergeB:
-				if corptc[i] in mergeB[k][0]:
-					score = mergeA[j][0].index(i) - mergeB[k][0].index(corptc[i])
-					print j, k, score
-				elif corptc[i] in mergeB[k][1]:
-					score = mergeA[j][0].index(i) + mergeB[k][1].index(corptc[i])
-					print j, k, score
-		elif i in mergeA[j][1]:
-			for k in mergeB:
-				if corptc[i] in mergeB[k][0]:
-					score = -(mergeA[j][1].index(i)) - mergeB[k][0].index(corptc[i])
-                                        print j, k, score
-                                elif corptc[i] in mergeB[k][1]:
-					score = -(mergeA[j][1].index(i)) + mergeB[k][1].index(corptc[i])
-                                        print j,k, score
-
-#Getting file names
-
-
-"""comporg=entrada.ptcpairptc.split('_')[0]
-outname=comporg+".out"
-print outname
-#Compare
-cons={}
-
-dicup={}
-
-for i in corptc: 										#iterate over {proteinA:proteinB}
-	for j in corlncAup: 									#iterate over {lncRNAA:proteinA}
-		if i == corlncAup[j]:
-			for k in corlncBup:							#iterate over {lncRNAB:proteinB}
-				if corptc[i] == corlncBup[k]:					#check if proteinA in {proteinA:proteinB} equals to proteinB in {lncRNAB:proteinB} 
-					dicup[corlncAup[j]]=corlncBup[k]
-#print dicup
-
-
-dicdown={}
-
-for i in corptc: 										#iterate over {proteinA:proteinB}
-	for j in corlncAdown: 									#iterate over {lncRNAA:proteinA}
-		if i == corlncAdown[j]:
-			for k in corlncBdown:							#iterate over {lncRNAB:proteinB}
-				if corptc[i] == corlncBdown[k]:					#check if proteinA in {proteinA:proteinB} equals to proteinB in {lncRNAB:proteinB} 
-					dicdown[corlncAdown[j]]=corlncBdown[k]
-
-
-
-
-#checking inversions
-
-dicinv{}
-
-for i in corptc:                                                                                #iterate over {proteinA:proteinB}
-        for j in corlncAup:                                                                     #iterate over {lncRNAA:proteinA}
-                if i == corlncAup[j]:
-                        for k in corlncBdown:                                                   #iterate over {lncRNAB:proteinB}
-                                if corptc[i] == corlncBdown[k]:                                 #check if proteinA in {proteinA:proteinB} equals to proteinB in {lncRNAB:proteinb}
-                                        dicinv[corlncAup[j]]=corlncBup[k]
-
-
-for i in dicinv:
-	for j in corptc:
-		if 
-
-#with open (outname, "w") as out:
-with open ("testedesaida", "w") as out:
-	for i in dicup:
-		out.write(i+"\t"+dicup[i]+"\n")
-	for i in dicdown:
-		out.write(i+"\t"+dicdown[i]+"\n")
-
-
-
-def main():
-	#Insert here the code#
-	print ""
-
-main();
-"""
-
+list1=out_dic["ludown"]
+list2=out_dic["luup"]
+with open("testeee", "w") as out:
+	for i in range(0,len(list1)-3,3):
+		out.write(list1[i]+"\t"+list1[i+1]+"\t"+str(list1[i+2])+"\n")
+	for i in range(0,len(list2)-3,3):
+                out.write(list2[i]+"\t"+list2[i+1]+"\t"+str(list2[i+2])+"\n")
