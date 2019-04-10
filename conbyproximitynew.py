@@ -234,22 +234,26 @@ for i in range (0,len(list2)-3,3):
                 score[list2[i]][index+1]=score[list2[i]][index+1]+list2[i+2]
 
 
-##########################getting best####################################
-
+##########################Getting bests####################################
 
 
 filtered={}
 for i in score:
 
 	aux=[]
-
 	for j in range(0,len(score[i])):
 
 		if j%2!=0:
 			aux.append(score[i][j])
 
-	minindex=score[i].index(min(aux))				#Preciso pegar todos os minimos, asssim pega soh um
-	filtered[i]=(score[i][minindex-1],score[i][minindex])
+	minimo=min(aux)
+	key=i+"_"+str(minimo)
+
+	filtered[key]=[]
+
+	for t in range(0,len(score[i])):
+		if score[i][t]==minimo:
+			filtered[key].append(score[i][t-1])
 
 
 #######################Returning results#################################
@@ -257,5 +261,6 @@ for i in score:
 
 with open (entrada.outname, "w") as out:
 	for i in filtered:
-		out.write(i+"\t"+filtered[i][0]+"\t"+str(filtered[i][1])+"\n")
+		for j in range(0, len(filtered[i])):
+			out.write(i.split("_")[0]+"\t"+str(filtered[i][j])+"\t"+str(i.split("_")[1])+"\n")
 
