@@ -34,7 +34,7 @@ step=4
 #Getting  file names
 filevars=["lncpairptAupstream", "lncpairptAdownstream", \
 "lncpairptBupstream", "lncpairptBdownstream", \
-"ptcpairptc"]  # variables that receive file names
+"ptcpairptc","outname"]  # variables that receive file names
 
 parser = argparse.ArgumentParser(description='lncRNA conservation by proximity')
 
@@ -43,6 +43,7 @@ parser.add_argument('-adown', action = 'store', dest = filevars[1], help='lncRNA
 parser.add_argument('-bup', action = 'store', dest = filevars[2], help='lncRNA-ptcoding genes pair for organism B upstream')
 parser.add_argument('-bdown', action = 'store', dest = filevars[3], help='lncRNA-ptcoding genes pair for organism B downstream')
 parser.add_argument('-c', action = 'store', dest = filevars[4], help='ptcoding-ptcoding orthologous pairs by species')
+parser.add_argument('-out', action = 'store', dest = filevars[5], help='output file name')
 parser.add_argument('--version')
 
 entrada=parser.parse_args()
@@ -55,8 +56,11 @@ print "Processing files..."
 
 corptc={}
 with open (entrada.ptcpairptc, 'r') as ptcpair:
+
         for line in ptcpair:
+
                 if line[0]!="G":
+
                         cols=line.split()
                         corptc[cols[0]]=cols[2] # key:lncgene, ptcgene
 
@@ -66,20 +70,27 @@ with open (entrada.ptcpairptc, 'r') as ptcpair:
 
 corelist=[]
 aux={}
-for i in range(0, len(filevars)-1):
+for i in range(0, len(filevars)-2):
+
 	with open (eval("entrada."+filevars[i]), 'r') as lncpair:
+
 	 	for line in lncpair:
+
 			col=line.split()
 			protein=col[9]
 			lnc=col[3]
 			if i<=1:
+
 				if protein in corptc:
+
 					if lnc not in aux:
 						aux[lnc]=[[],[]]
 					else:
 						aux[lnc][i].append(protein) 		#dic={lncgene: ptcgeneup1, ptcgeneup2,...ptcgenedownN-1,ptcgenedowN]
 			else:
+
 				if protein in corptc.values():
+
                                         if lnc not in aux:
                                                 aux[lnc]=[[],[]]
                                         else:
@@ -155,10 +166,14 @@ print "Processing orthology..."
 def lookupup(dic1,dic2, out_dic):
         up=[]
         for i in dic1:
+
                 for index1 in range(0,len(dic1[i][0])):
+
                         protein1=dic1[i][0][index1]
                         protein2=corptc[dic1[i][0][index1]]
+
                         for j in dic2:
+
                                 if protein2 in dic2[j][0]:
                                                         up.extend([i,j,abs(index1-dic2[j][0].index(protein2))])
                                 elif protein2 in dic2[j][1]:
@@ -190,14 +205,57 @@ if __name__ == '__main__':
         p1.join()
         p2.join()
 
-##########################Returning results###################################
 
-print "Building output"
+##########################computing scores###################################
 
 list1=out_dic["ludown"]
 list2=out_dic["luup"]
-with open("testeee", "w") as out:
-	for i in range(0,len(list1)-3,3):
-		out.write(list1[i]+"\t"+list1[i+1]+"\t"+str(list1[i+2])+"\n")
-	for i in range(0,len(list2)-3,3):
-                out.write(list2[i]+"\t"+list2[i+1]+"\t"+str(list2[i+2])+"\n")
+
+score={}
+
+for i in range (0,len(list1)-3,3):
+
+	if list1[i] not in score:
+		score[list1[i]]=[list1[i+1],list1[i+2]]
+	elif list1[i+1] not in score[list1[i]]:
+		score[list1[i]].extend([list1[i+1],list1[i+2]])
+	else:
+		index=score[list1[i]].index(list1[i+1])
+		score[list1[i]][index+1]=score[list1[i]][index+1]+list1[i+2]
+
+for i in range (0,len(list2)-3,3):
+
+        if list2[i] not in score:
+                score[list2[i]]=[list2[i+1],list2[i+2]]
+        elif list2[i+1] not in score[list2[i]]:
+                score[list2[i]].extend([list2[i+1],list1[i+2]])
+        else:
+                index=score[list2[i]].index(list2[i+1])
+                score[list2[i]][index+1]=score[list2[i]][index+1]+list2[i+2]
+
+
+##########################getting best####################################
+
+
+
+filtered={}
+for i in score:
+
+	aux=[]
+
+	for j in range(0,len(score[i])):
+
+		if j%2!=0:
+			aux.append(score[i][j])
+
+	minindex=score[i].index(min(aux))				#Preciso pegar todos os minimos, asssim pega soh um
+	filtered[i]=(score[i][minindex-1],score[i][minindex])
+
+
+#######################Returning results#################################
+
+
+with open (entrada.outname, "w") as out:
+	for i in filtered:
+		out.write(i+"\t"+filtered[i][0]+"\t"+str(filtered[i][1])+"\n")
+
